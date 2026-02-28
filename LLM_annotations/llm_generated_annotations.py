@@ -186,8 +186,8 @@ def annotate_row(client: OpenAI, row: dict) -> tuple[int, int]:
 
 
 def main():
-    input_path = os.environ.get("INPUT_CSV", "talk_moves_train_set.csv")
-    output_path = os.environ.get("OUTPUT_CSV", "llm_annotated_talk_moves_train_set.csv")
+    input_path = os.environ.get("INPUT_CSV", "talk_moves_train_set_sampled.csv")
+    output_path = os.environ.get("OUTPUT_CSV", "llm_annotated_train_set.csv")
 
     kwargs = {}
     if BASE_URL:
