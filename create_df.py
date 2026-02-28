@@ -6,7 +6,12 @@ import glob
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
+
+# set seed for reproducibility
+np.random.seed(42)
+
 # use 7 context window
+context_window_size = 7
 
 student_tag_dict = {
     '4 - Making a Claim': '4 - Making a Claim',
@@ -30,14 +35,6 @@ student_tag_dict = {
     '4 - making a cDavid': '4 - Making a Claim',
     ' ': '1 - None',
     '5 - providing evidence / reasoning': '5 - Providing Evidence/Explaining Reasoning'
-}
-
-hierarchy_dict = {
-    '1 - None': 0,
-    '4 - Making a Claim': 1,
-    '5 - Providing Evidence/Explaining Reasoning': 2,
-    '3 - Asking for More Information': 3,
-    '2 - Relating to Another Student': 4
 }
 
 # Find all xlsx files in Subset 1 and Subset 2
@@ -72,70 +69,67 @@ for file in train_xlsx:
         # create a column for if speaker is student or not - if Student Tag is not null, then it is a student utterance, and convert to "T" else "S"
         load_data['is_student'] = load_data['Student Tag'].notna()
         load_data['student_tag'] = load_data['Student Tag'].map(student_tag_dict)
-
-        # I want to concatenate "Sentence" by "Turn" and keep the "Student Tag" that is "highest" in the turn. For example, if a turn has 3 sentences and the student tags are "1 - None", "2 - Relating to Another Student", "3 - Asking for More Information", then the concatenated sentence should be "Sentence1 Sentence2 Sentence3" and the student tag should be "3 - Asking for More Information". I will use the "Turn" column to group by and concatenate the sentences, and then take the max student tag for each turn.
-        def get_max_tag(tags):
-            non_null_tags = [tag for tag in tags if pd.notna(tag)]
-            if not non_null_tags:
-                return None
-            return max(non_null_tags, key=lambda tag: hierarchy_dict[tag])
+        load_data['speaker_flag'] = load_data['is_student'].apply(lambda x: 'S' if x else 'T')
         
-        # fill NaN in Turn with previous turn value (forward fill)
-        load_data['Turn'] = load_data['Turn'].ffill()
-        grouped_data = load_data.groupby('Turn').agg({
-            'Sentence': lambda x: ' '.join(str(s) for s in x),
-            'student_tag': get_max_tag
-        }).reset_index()
-
-        filename = file.split('/')[-1]
-        grouped_data['filename'] = filename
-        grouped_data['is_student'] = grouped_data['student_tag'].notna()
-        grouped_data['speaker_flag'] = grouped_data['is_student'].apply(lambda x: 'S' if x else 'T')
-        
-        if filename == "7th grade math.xlsx":
-            print(grouped_data.head(20))
-
-        # for each student utterance, i want to find the previous 5 utterances and the subsequent 5 utterances. I then want to create a new df "df_utterances" with the following columns: "student_utterance", "previous_5_utterances", "subsequent_5_utterances", "filename", studnet_tag (which corresponds to the student_utterance column).
         utterances_list = []
-        for i in range(len(grouped_data)):
-            utterance = grouped_data.loc[i, "Sentence"]
-            student_tag = grouped_data.loc[i, "student_tag"]
+        for i in range(len(load_data)):
+            utterance = load_data.loc[i, "Sentence"]
+            student_tag = load_data.loc[i, "student_tag"]
+            turn_val = load_data.loc[i, "Turn"]
+            
+            # Try to convert to int, keep original if it fails
+            if pd.isna(turn_val):
+                turn_tag = np.nan
+            else:
+                try:
+                    turn_tag = int(turn_val)
+                except (ValueError, TypeError):
+                    turn_tag = turn_val
 
             if pd.isna(student_tag):
                 continue  # Skip rows without a student tag
-
-            # now i want to find the previous 5 utterances and the subsequent 5 utterances. I will use the "speaker_flag" column to attach to the utterances. i.e. it should look like "[S] utterance1 \newline [T] utterance2 \newline [S] utterance3"
-            previous_5 = []
-            previous_5_counts = 0
-            subsequent_5 = []
-            subsequent_5_counts = 0
-            for j in range(i-5, i):
+                
+            previous = []
+            previous_counts = 0
+            subsequent = []
+            subsequent_counts = 0
+            for j in range(i-context_window_size, i):
                 if j < 0:
                     continue
-                prev_utterance = grouped_data.loc[j, "Sentence"]
-                prev_speaker = grouped_data.loc[j, "speaker_flag"]
-                previous_5.append(f"[{prev_speaker}] {prev_utterance}")
-                previous_5_counts += 1
-            for j in range(i+1, i+6):
-                if j >= len(grouped_data):
+                prev_utterance = load_data.loc[j, "Sentence"]
+                prev_speaker = load_data.loc[j, "speaker_flag"]
+                prev_val = load_data.loc[j, "Turn"]
+                try:
+                    prev_tag = int(prev_val) if pd.notna(prev_val) else prev_val
+                except (ValueError, TypeError):
+                    prev_tag = prev_val
+                previous.append(f"({prev_tag}) [{prev_speaker}] {prev_utterance}")
+                previous_counts += 1
+            for j in range(i+1, i+context_window_size+1):
+                if j >= len(load_data):
                     continue
-                sub_utterance = grouped_data.loc[j, "Sentence"]
-                sub_speaker = grouped_data.loc[j, "speaker_flag"]
-                subsequent_5.append(f"[{sub_speaker}] {sub_utterance}")
-                subsequent_5_counts += 1
-            if previous_5_counts < 5:
-                continue  # Skip if previous 5 utterances are not complete
-            if subsequent_5_counts < 5:
-                continue  # Skip if subsequent 5 utterances are not complete
-            previous_5_str = "\n".join(previous_5)
-            subsequent_5_str = "\n".join(subsequent_5)
-
+                sub_utterance = load_data.loc[j, "Sentence"]
+                sub_speaker = load_data.loc[j, "speaker_flag"]
+                sub_val = load_data.loc[j, "Turn"]
+                try:
+                    sub_tag = int(sub_val) if pd.notna(sub_val) else sub_val
+                except (ValueError, TypeError):
+                    sub_tag = sub_val
+                subsequent.append(f"({sub_tag}) [{sub_speaker}] {sub_utterance}")
+                subsequent_counts += 1
+            if previous_counts < context_window_size:
+                continue  # Skip if previous context_window_size utterances are not complete
+            if subsequent_counts < context_window_size:
+                continue  # Skip if subsequent context_window_size utterances are not complete
+            previous_str = "\n".join(previous)
+            subsequent_str = "\n".join(subsequent)
             utterances_list.append({
+                'previous_context': previous_str,
                 'student_utterance': utterance,
-                'previous_5_utterances': previous_5_str,
-                'subsequent_5_utterances': subsequent_5_str,
+                'subsequent_context': subsequent_str,
                 'filename': file.split('/')[-1],
-                'student_tag': student_tag
+                'student_tag': student_tag,
+                'turn': turn_tag
             })
 
         df_utterances = pd.DataFrame(utterances_list)
@@ -150,14 +144,9 @@ else:
     print("No files were loaded!")
 
 
+print(train_df.head())
 
-print(train_df['student_tag'].unique())
-
-print(train_df['student_tag'].value_counts())
-
-train_df.to_csv('full_train_df.csv', index=False)
-
-# select 60 random rows that are '2 - Relating to Another Student', 50 random rows that are '3 - Asking for More Information', 25 random rows that are '4 - Making a Claim', 25 random rows that are '5 - Providing Evidence/Explaining Reasoning', and 20 random rows that are '1 - None' and save them to a new csv file "full_train_df_sampled.csv"
+train_df = train_df[['previous_context', 'student_utterance', 'turn', 'subsequent_context', 'filename', 'student_tag']]
 
 sampled_dfs = []
 for tag, count in [('2 - Relating to Another Student', 60), ('3 - Asking for More Information', 50), ('4 - Making a Claim', 25), ('5 - Providing Evidence/Explaining Reasoning', 25), ('1 - None', 20)]:
@@ -165,9 +154,9 @@ for tag, count in [('2 - Relating to Another Student', 60), ('3 - Asking for Mor
     sampled_dfs.append(sampled_df)
 
 full_train_df_sampled = pd.concat(sampled_dfs, ignore_index=True)
-
+full_train_df_unannotated = train_df[~train_df.index.isin(full_train_df_sampled.index)]
 full_train_df_sampled = full_train_df_sampled.sample(frac=1, random_state=42).reset_index(drop=True)
 
 print(full_train_df_sampled['student_tag'].value_counts())
-full_train_df_sampled.to_csv('full_train_df_sampled.csv', index=False)
-
+full_train_df_sampled.to_csv('talk_moves_annotate_new.csv', index=False)
+full_train_df_unannotated.to_csv('talk_moves_unannotated.csv', index=False)
