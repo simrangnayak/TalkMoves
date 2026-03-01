@@ -3,6 +3,29 @@ import os
 import re
 from openai import OpenAI
 
+
+def _load_dotenv():
+    """Load .env from script dir or cwd so OPENAI_API_KEY can be set there."""
+    for dirpath in (os.path.dirname(os.path.abspath(__file__)), os.getcwd()):
+        path = os.path.join(dirpath, ".env")
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, _, value = line.partition("=")
+                        key = key.strip()
+                        if key.lower().startswith("export "):
+                            key = key[7:].strip()
+                        value = value.strip().strip("'\"")
+                        # set if missing or currently empty so .env always wins when empty
+                        if key and (key not in os.environ or not os.environ[key]):
+                            os.environ[key] = value
+            break
+
+
+_load_dotenv()
+
 MODEL = os.environ.get("LLM_MODEL", "gpt-5-mini")
 BASE_URL = os.environ.get("OPENAI_BASE_URL") 
 
@@ -189,7 +212,13 @@ def main():
     input_path = os.environ.get("INPUT_CSV", "talk_moves_train_set_sampled.csv")
     output_path = os.environ.get("OUTPUT_CSV", "llm_annotated_train_set.csv")
 
-    kwargs = {}
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise SystemExit(
+            "OPENAI_API_KEY is not set. Set it with: export OPENAI_API_KEY='your-key'"
+        )
+
+    kwargs = {"api_key": api_key}
     if BASE_URL:
         kwargs["base_url"] = BASE_URL
 
