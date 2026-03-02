@@ -2,6 +2,7 @@ code/.ipynb_checkpoints/
 code/logs/
 code/wandb/
 
+.DS_Store
 # Large CSV files
 ncte_utterances_with_context.csv
 ncte_single_utterances.csv
