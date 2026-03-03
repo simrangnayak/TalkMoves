@@ -6,3 +6,6 @@ code/wandb/
 # Large CSV files
 ncte_utterances_with_context.csv
 ncte_single_utterances.csv
+
+# Model weights and tokenizers (too large for git; use Git LFS or external storage)
+models/
