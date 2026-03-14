@@ -209,8 +209,8 @@ def annotate_row(client: OpenAI, row: dict) -> tuple[int, int]:
 
 
 def main():
-    input_path = os.environ.get("INPUT_CSV", "talk_moves_train_set_sampled.csv")
-    output_path = os.environ.get("OUTPUT_CSV", "llm_annotated_train_set.csv")
+    input_path = os.environ.get("INPUT_CSV", "talk_moves_validation_set.csv")
+    output_path = os.environ.get("OUTPUT_CSV", "llm_annotated_validation_set.csv")
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
